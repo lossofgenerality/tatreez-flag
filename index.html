@@ -99,9 +99,9 @@ footer {
   <div class="row" id="c-nav" hidden><button id="prev" type="button">‹ Previous</button><button id="next" type="button">Next ›</button></div>
 </div>
 
-<div class="card" id="ios-help" hidden role="dialog" aria-label="Install on iPhone or iPad" style="bottom: auto; top: calc(env(safe-area-inset-top, 0px) + 72px); right: max(16px, env(safe-area-inset-right, 0px)); left: auto;">
-  <h2>Install on iPhone or iPad</h2>
-  <p>In Safari, tap the <strong>Share</strong> button, then <strong>Add to Home Screen</strong>. The banners then open full-screen from your home screen, and work offline.</p>
+<div class="card" id="ios-help" hidden role="dialog" aria-label="Install this app" style="bottom: auto; top: calc(env(safe-area-inset-top, 0px) + 24vh); background: rgba(20, 26, 23, 0.94); right: max(16px, env(safe-area-inset-right, 0px)); left: auto;">
+  <h2>Install Threads in the Wind</h2>
+  <p id="install-steps"></p>
   <div class="row"><button id="ios-close" type="button">Got it</button></div>
 </div>
 
@@ -410,13 +410,30 @@ let fpsFrames = 0, fpsStart = 0, fpsChecked = false;
   if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
   if (standalone) return;
   let deferred = null;
-  window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); deferred = e; btn.hidden = false; });
+  btn.hidden = false;                                // always offered; the click picks the right way
+  window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); deferred = e; });
   window.addEventListener('appinstalled', () => { btn.hidden = true; deferred = null; });
-  const iOS = /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
-  if (iOS) btn.hidden = false;                       // Safari has no install prompt; show instructions instead
+  const ua = navigator.userAgent;
+  const iOS = /iPhone|iPad|iPod/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  const steps = document.getElementById('install-steps');
+  function howTo() {
+    if (iOS) return 'In Safari, tap the Share button (the square with an arrow), then “Add to Home Screen”.';
+    if (/Android/.test(ua) && /Firefox/.test(ua)) return 'Open the Firefox menu (⋮), then “Install” or “Add to Home screen”.';
+    if (/SamsungBrowser/.test(ua)) return 'Open the menu (☰), then “Add page to” → “Home screen”.';
+    if (/Android/.test(ua)) return 'Open the Chrome menu (⋮), then “Install app” or “Add to Home screen”.';
+    if (/Edg\//.test(ua)) return 'Open the Edge menu (…), then “Apps” → “Install this site as an app”.';
+    if (/Chrome\//.test(ua)) return 'Click the install icon at the right of the address bar, or open the Chrome menu (⋮) → “Cast, save and share” → “Install page as app”.';
+    if (/Safari\//.test(ua) && /Macintosh/.test(ua)) return 'In Safari, choose File → “Add to Dock”.';
+    return 'Use your browser menu and choose “Install app” or “Add to Home screen”. Firefox on computers does not install web apps; Chrome, Edge or Safari can.';
+  }
   btn.addEventListener('click', async () => {
-    if (deferred) { deferred.prompt(); const r = await deferred.userChoice; if (r.outcome === 'accepted') btn.hidden = true; deferred = null; }
-    else if (iOS) help.hidden = false;
+    if (deferred) {
+      deferred.prompt(); const r = await deferred.userChoice; deferred = null;
+      if (r.outcome === 'accepted') btn.hidden = true;
+      return;
+    }
+    steps.textContent = howTo() + ' It then opens full-screen and works offline.';
+    help.hidden = false;
   });
   document.getElementById('ios-close').addEventListener('click', () => { help.hidden = true; });
 })();

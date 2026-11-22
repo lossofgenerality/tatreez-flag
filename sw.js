@@ -1,6 +1,6 @@
 // Threads in the Wind: keeps the page and its libraries so the installed app opens offline.
 // © 2026 Computational Classnotes · CC BY-NC-SA 4.0
-const CACHE = 'threads-v1';
+const CACHE = 'threads-v2';
 const CORE = [
   './', './index.html', './manifest.webmanifest', './icon-192.png', './icon-512.png',
   'https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js',
