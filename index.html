@@ -4,6 +4,14 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="description" content="Seven embroideries from Gaza as cloth banners swaying in a breeze above flowing water.">
+<meta name="theme-color" content="#141a17">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Threads">
 <title>Threads in the Wind</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -39,6 +47,8 @@ h1 span { color: var(--muted); font-weight: 400; font-size: 0.62em; letter-spaci
 input[type=range] { width: 120px; accent-color: var(--tatreez); }
 button { font: inherit; font-size: 0.82rem; color: var(--ink); background: transparent; border: 1px solid var(--line); border-radius: 999px; padding: 4px 12px; cursor: pointer; }
 button:hover { border-color: var(--ink); }
+button.install { background: var(--tatreez); border-color: var(--tatreez); color: #fff; }
+button.install:hover { filter: brightness(1.12); }
 button:focus-visible, input:focus-visible { outline: 2px solid var(--tatreez); outline-offset: 2px; }
 .card {
   position: fixed; bottom: calc(env(safe-area-inset-bottom, 0px) + 46px);
@@ -47,6 +57,12 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--tatreez); o
   padding: 14px 16px; backdrop-filter: blur(6px); display: grid; gap: 6px;
 }
 .card h2 { margin: 0; font-family: var(--display); font-weight: 600; font-size: 1.15rem; text-wrap: balance; }
+/* the description card floats directly over the scene: no box, bright text with a soft dark halo */
+#card { background: transparent; border: 0; border-left: 3px solid var(--tatreez); backdrop-filter: none; }
+#card h2, #card p { color: #fff8ea; text-shadow: 0 1px 2px rgba(0,0,0,0.95), 0 0 10px rgba(0,0,0,0.85), 0 0 22px rgba(0,0,0,0.6); }
+#card .credit { color: #f2d9a8; }
+footer { color: #e9e1d2; text-shadow: 0 1px 2px #000, 0 0 8px rgba(0,0,0,0.9); }
+#card button { color: #fff8ea; border-color: rgba(255, 248, 234, 0.6); background: rgba(0,0,0,0.25); text-shadow: 0 1px 2px #000; }
 .card p { margin: 0; font-size: 0.86rem; line-height: 1.5; color: var(--ink); }
 .card .credit { color: var(--muted); font-size: 0.78rem; }
 .card .row { display: flex; gap: 8px; margin-top: 4px; }
@@ -72,6 +88,7 @@ footer {
     <button id="pause" type="button">Pause</button>
     <button id="overview" type="button">All banners</button>
     <button id="quality" type="button" title="Switch between full and fast graphics">Quality: High</button>
+    <button id="install" type="button" class="install" hidden>Install app</button>
   </div>
 </div>
 
@@ -80,6 +97,12 @@ footer {
   <p id="c-text">Cross-stitch pieces made by Palestinian women in refugee camps and the occupied territories, photographed at an exhibition. Drag to look around, pinch or scroll to zoom, tap a banner to bring it forward.</p>
   <p class="credit" id="c-credit"></p>
   <div class="row" id="c-nav" hidden><button id="prev" type="button">‹ Previous</button><button id="next" type="button">Next ›</button></div>
+</div>
+
+<div class="card" id="ios-help" hidden role="dialog" aria-label="Install on iPhone or iPad" style="bottom: auto; top: calc(env(safe-area-inset-top, 0px) + 72px); right: max(16px, env(safe-area-inset-right, 0px)); left: auto;">
+  <h2>Install on iPhone or iPad</h2>
+  <p>In Safari, tap the <strong>Share</strong> button, then <strong>Add to Home Screen</strong>. The banners then open full-screen from your home screen, and work offline.</p>
+  <div class="row"><button id="ios-close" type="button">Got it</button></div>
 </div>
 
 <footer>Embroideries © their makers · exhibition photographs · 3D piece © 2026 Computational Classnotes · CC BY-NC-SA 4.0</footer>
@@ -378,6 +401,25 @@ qBtn.addEventListener('click', () => {
 applyQuality(quality);
 // if full quality can't keep up (under ~28 fps after warm-up), drop to fast mode once
 let fpsFrames = 0, fpsStart = 0, fpsChecked = false;
+
+// ---------- install as an app (only where the page ships a manifest, e.g. GitHub Pages) ----------
+(function () {
+  const btn = document.getElementById('install'), help = document.getElementById('ios-help');
+  if (!document.querySelector('link[rel="manifest"]')) return;
+  const standalone = (window.matchMedia && matchMedia('(display-mode: standalone), (display-mode: fullscreen)').matches) || navigator.standalone;
+  if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
+  if (standalone) return;
+  let deferred = null;
+  window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); deferred = e; btn.hidden = false; });
+  window.addEventListener('appinstalled', () => { btn.hidden = true; deferred = null; });
+  const iOS = /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  if (iOS) btn.hidden = false;                       // Safari has no install prompt; show instructions instead
+  btn.addEventListener('click', async () => {
+    if (deferred) { deferred.prompt(); const r = await deferred.userChoice; if (r.outcome === 'accepted') btn.hidden = true; deferred = null; }
+    else if (iOS) help.hidden = false;
+  });
+  document.getElementById('ios-close').addEventListener('click', () => { help.hidden = true; });
+})();
 
 // ---------- loop ----------
 function resize() {

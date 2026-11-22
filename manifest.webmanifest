@@ -1,0 +1,16 @@
+{
+  "name": "Threads in the Wind",
+  "short_name": "Threads",
+  "description": "Seven embroideries from Gaza as cloth banners swaying in a breeze above flowing water. Embroideries © their makers · 3D piece © 2026 Computational Classnotes · CC BY-NC-SA 4.0",
+  "start_url": "./",
+  "scope": "./",
+  "display": "fullscreen",
+  "orientation": "any",
+  "background_color": "#141a17",
+  "theme_color": "#141a17",
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
