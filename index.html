@@ -1,5 +1,10 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="description" content="Seven embroideries from Gaza as cloth banners swaying in a breeze above flowing water.">
 <title>Threads in the Wind</title>
-<meta name="claude:viewport-fit-sides" content="cover">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600&family=Work+Sans:wght@400;500&display=swap">
@@ -55,6 +60,8 @@ footer {
 @media (max-width: 560px) { input[type=range] { width: 90px; } footer { text-align: left; } }
 </style>
 
+</head>
+<body>
 <canvas id="stage" aria-label="Seven embroidered banners hanging in a gentle breeze"></canvas>
 <div id="status">Hanging the banners…</div>
 
@@ -64,6 +71,7 @@ footer {
     <label for="breeze">Breeze <input id="breeze" type="range" min="0" max="100" value="45"></label>
     <button id="pause" type="button">Pause</button>
     <button id="overview" type="button">All banners</button>
+    <button id="quality" type="button" title="Switch between full and fast graphics">Quality: High</button>
   </div>
 </div>
 
@@ -93,9 +101,14 @@ const INFO = [
 
 const canvas = document.getElementById('stage');
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
-renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+// Quality: phones and tablets start in fast mode (no reflection, no shadows, lower resolution).
+const MOBILE = (window.matchMedia && matchMedia('(pointer: coarse)').matches) ||
+  /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || Math.min(screen.width, screen.height) < 700;
+let quality = MOBILE ? 'low' : 'high', userChose = false;
+try { const q = localStorage.getItem('tw-quality'); if (q === 'high' || q === 'low') { quality = q; userChose = true; } } catch (e) {}
+const START_QUALITY = quality;
 renderer.outputEncoding = THREE.sRGBEncoding;
-renderer.shadowMap.enabled = true;
+renderer.shadowMap.enabled = quality === 'high';
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
 const scene = new THREE.Scene();
@@ -107,13 +120,14 @@ camera.position.set(0, 1.0, 14.5);
 const controls = new THREE.OrbitControls(camera, canvas);
 controls.target.set(0, 0.6, 0);
 controls.enableDamping = true;
-controls.minDistance = 2.2; controls.maxDistance = 20;
+controls.minDistance = 2.2; controls.maxDistance = 28;
+let homeZ = 14.5;
 controls.maxPolarAngle = Math.PI * 0.62;
 
 scene.add(new THREE.HemisphereLight(0xf3ead8, 0x1c2420, 0.55));
 const key = new THREE.DirectionalLight(0xfff1dc, 0.95);
 key.position.set(-4, 8, 9); key.castShadow = true;
-key.shadow.mapSize.set(2048, 2048);
+key.shadow.mapSize.set(1536, 1536);
 Object.assign(key.shadow.camera, { left: -12, right: 12, top: 8, bottom: -8, near: 1, far: 30 });
 scene.add(key);
 const rim = new THREE.DirectionalLight(0xb7c9ff, 0.35); rim.position.set(6, 3, -6); scene.add(rim);
@@ -125,7 +139,11 @@ const WaterShader = {
     uniform mat4 textureMatrix;
     varying vec4 vUv; varying vec3 vWorld;
     void main() {
+      #ifdef REFLECT
       vUv = textureMatrix * vec4(position, 1.0);
+      #else
+      vUv = vec4(0.0);
+      #endif
       vWorld = (modelMatrix * vec4(position, 1.0)).xyz;
       gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
     }`,
@@ -137,34 +155,57 @@ const WaterShader = {
       vec2 i = floor(p), f = fract(p); vec2 u = f * f * (3.0 - 2.0 * f);
       return mix(mix(hash(i), hash(i + vec2(1, 0)), u.x), mix(hash(i + vec2(0, 1)), hash(i + vec2(1, 1)), u.x), u.y);
     }
-    float fbm(vec2 p) { float v = 0.0, a = 0.5; for (int k = 0; k < 4; k++) { v += a * noise(p); p = p * 2.03 + 7.1; a *= 0.5; } return v; }
+    float fbm(vec2 p) { float v = 0.0, a = 0.5; for (int k = 0; k < OCT; k++) { v += a * noise(p); p = p * 2.03 + 7.1; a *= 0.5; } return v; }
     float height(vec2 p) {
       vec2 flow = vec2(time * 0.22, time * 0.09);           // the water drifts slowly
       return fbm(p * 0.55 + flow) * 0.6 + fbm(p * 1.7 - flow * 1.6) * 0.4;
     }
     void main() {
-      vec2 p = vWorld.xz; float e = 0.06;
-      vec2 grad = vec2(height(p + vec2(e, 0.0)) - height(p - vec2(e, 0.0)), height(p + vec2(0.0, e)) - height(p - vec2(0.0, e))) / (2.0 * e);
+      vec2 p = vWorld.xz; float e = 0.06; float h0 = height(p);
+      vec2 grad = vec2(height(p + vec2(e, 0.0)) - h0, height(p + vec2(0.0, e)) - h0) / e;
       vec3 n = normalize(vec3(-grad.x * 0.35, 1.0, -grad.y * 0.35));
+      #ifdef REFLECT
       vec4 uv = vUv; uv.xy += n.xz * 0.35 * uv.w;          // ripple the reflection
-      vec3 refl = texture2DProj(tDiffuse, uv).rgb;
+      vec3 refl = texture2DProj(tDiffuse, uv).rgb * color;
+      #else
+      vec3 refl = vec3(0.16, 0.24, 0.25) + 0.12 * vec3(0.9, 0.7, 0.6) * smoothstep(0.4, 0.9, h0);  // dim room, no mirror
+      #endif
       vec3 V = normalize(cameraPosition - vWorld);
       float fres = 0.45 + 0.55 * pow(1.0 - max(dot(V, n), 0.0), 2.0);
       vec3 deep = vec3(0.04, 0.12, 0.13), shallow = vec3(0.10, 0.27, 0.28);
-      vec3 body = mix(deep, shallow, smoothstep(0.35, 0.75, height(p)));
+      vec3 body = mix(deep, shallow, smoothstep(0.35, 0.75, h0));
       vec3 L = normalize(vec3(-0.25, 0.45, -1.0));   // low light from beyond the banners
       float spec = pow(max(dot(reflect(-L, n), V), 0.0), 40.0) * 0.6;
       float glint = pow(1.0 - abs(sin(height(p * 1.3) * 18.0)), 10.0) * 0.07;
-      vec3 col = mix(body, refl * color * 1.35, fres) + (spec + glint) * vec3(1.0, 0.95, 0.85);
+      vec3 col = mix(body, refl * 1.35, fres) + (spec + glint) * vec3(1.0, 0.95, 0.85);
       float fade = smoothstep(26.0, 9.0, length(vWorld.xz - vec2(0.0, 2.0)));   // melt into the dark room
       gl_FragColor = vec4(mix(vec3(0.078, 0.102, 0.090), col, fade), 1.0);
     }`
 };
-const water = new THREE.Reflector(new THREE.PlaneGeometry(70, 70), {
-  shader: WaterShader, color: 0xb9c7c2, clipBias: 0.003,
-  textureWidth: Math.min(1024, innerWidth * (window.devicePixelRatio || 1)),
-  textureHeight: Math.min(1024, innerHeight * (window.devicePixelRatio || 1)) });
-water.rotation.x = -Math.PI / 2; water.position.y = -2.6; scene.add(water);
+function withDefines(src, defs) { return Object.entries(defs).map(([k, v]) => `#define ${k} ${v}`).join('\n') + '\n' + src; }
+let waterHigh = null, waterLow = null, water = null;
+function makeWater(q) {
+  if (q === 'high') {
+    if (!waterHigh) {
+      const sh = { uniforms: WaterShader.uniforms,
+        vertexShader: withDefines(WaterShader.vertexShader, { REFLECT: 1 }),
+        fragmentShader: withDefines(WaterShader.fragmentShader, { REFLECT: 1, OCT: 4 }) };
+      waterHigh = new THREE.Reflector(new THREE.PlaneGeometry(70, 70), {
+        shader: sh, color: 0xb9c7c2, clipBias: 0.003,
+        textureWidth: Math.min(1024, innerWidth), textureHeight: Math.min(1024, innerHeight) });
+      waterHigh.rotation.x = -Math.PI / 2; waterHigh.position.y = -2.6;
+    }
+    return waterHigh;
+  }
+  if (!waterLow) {
+    waterLow = new THREE.Mesh(new THREE.PlaneGeometry(70, 70), new THREE.ShaderMaterial({
+      uniforms: { color: { value: new THREE.Color(0xb9c7c2) }, time: { value: 0 } },
+      vertexShader: withDefines(WaterShader.vertexShader, {}),
+      fragmentShader: withDefines(WaterShader.fragmentShader, { OCT: 3 }) }));
+    waterLow.rotation.x = -Math.PI / 2; waterLow.position.y = -2.6;
+  }
+  return waterLow;
+}
 
 // ---------- cloth (Verlet integration, distance constraints) ----------
 function makeCloth(w, h, nx, ny) {
@@ -201,7 +242,8 @@ const rodMat = new THREE.MeshStandardMaterial({ color: 0x3a2c22, roughness: 0.6,
 let loaded = 0;
 IMGS.forEach((img, b) => {
   const w = 2.25, h = w * img.h / img.w;
-  const nx = 22, ny = Math.round(22 * h / w);
+  const res = START_QUALITY === 'high' ? 22 : 14;
+  const nx = res, ny = Math.round(res * h / w);
   const cloth = makeCloth(w, h, nx, ny);
   const geo = new THREE.PlaneGeometry(w, h, nx, ny); // same vertex order: rows top→bottom
   geo.translate(0, -h / 2, 0);
@@ -255,7 +297,7 @@ function stepCloth(B, dt) {
     p[k+2] += vz + fz * dt * dt;
   }
   const cons = c.cons;
-  for (let it = 0; it < 6; it++) {
+  for (let it = 0; it < ITER; it++) {
     for (let m = 0; m < cons.length; m += 3) {
       const a = cons[m] * 3, b = cons[m+1] * 3, L = cons[m+2];
       const dx = p[b]-p[a], dy = p[b+1]-p[a+1], dz = p[b+2]-p[a+2];
@@ -289,7 +331,7 @@ function showBanner(b) {
 }
 function showAll() {
   focus = -1;
-  moveCamera(new THREE.Vector3(0, 1.0, 14.5), new THREE.Vector3(0, 0.6, 0));
+  moveCamera(new THREE.Vector3(0, 1.0, homeZ), new THREE.Vector3(0, 0.6, 0));
   card.title.textContent = homeCard.t; card.text.textContent = homeCard.p; card.credit.textContent = ''; card.nav.hidden = true;
 }
 document.getElementById('overview').addEventListener('click', showAll);
@@ -313,20 +355,56 @@ canvas.addEventListener('pointerup', e => {
   if (hit) showBanner(hit.object.userData.index);
 });
 
+// ---------- quality switching ----------
+let ITER = 6, SUB = 2;
+const qBtn = document.getElementById('quality');
+function applyQuality(q) {
+  quality = q;
+  const dpr = window.devicePixelRatio || 1;
+  renderer.setPixelRatio(q === 'high' ? Math.min(dpr, 2) : Math.min(dpr, 1));
+  renderer.shadowMap.enabled = q === 'high';
+  scene.traverse(o => { if (o.material) o.material.needsUpdate = true; });
+  ITER = q === 'high' ? 6 : 4; SUB = q === 'high' ? 2 : 1;
+  if (water) scene.remove(water);
+  water = makeWater(q); scene.add(water);
+  qBtn.textContent = q === 'high' ? 'Quality: High' : 'Quality: Fast';
+  if (typeof resize === 'function') resize();
+}
+qBtn.addEventListener('click', () => {
+  userChose = true;
+  applyQuality(quality === 'high' ? 'low' : 'high');
+  try { localStorage.setItem('tw-quality', quality); } catch (e) {}
+});
+applyQuality(quality);
+// if full quality can't keep up (under ~28 fps after warm-up), drop to fast mode once
+let fpsFrames = 0, fpsStart = 0, fpsChecked = false;
+
 // ---------- loop ----------
 function resize() {
   const w = canvas.clientWidth, h = canvas.clientHeight;
   renderer.setSize(w, h, false); camera.aspect = w / h;
   camera.fov = w < 600 ? 58 : 42; camera.updateProjectionMatrix();
+  // back off far enough that the whole row of banners fits the screen width
+  const halfW = Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)) * camera.aspect;
+  homeZ = Math.min(26, Math.max(14.5, 9.6 / halfW));
 }
 window.addEventListener('resize', resize); resize();
+camera.position.set(0, 1.0, homeZ);
 
 let last = performance.now();
 function frame(now) {
   const dt = Math.min(0.033, (now - last) / 1000); last = now;
+  if (!fpsChecked && now > 2500) {
+    if (!fpsStart) fpsStart = now;
+    fpsFrames++;
+    if (now - fpsStart > 3000) {
+      fpsChecked = true;
+      if (quality === 'high' && !userChose && fpsFrames / ((now - fpsStart) / 1000) < 28) applyQuality('low');
+    }
+  }
   if (!paused) {
     time += dt;
-    const sub = 2, h = dt / sub;
+    const sub = SUB, h = dt / sub;
     for (const B of banners) {
       for (let s = 0; s < sub; s++) stepCloth(B, h);
       B.geo.attributes.position.array.set(B.cloth.pos);
@@ -348,3 +426,6 @@ function frame(now) {
 banners.forEach(B => { const a = B.geo.attributes.position.array; B.cloth.rest.set(a); B.cloth.pos.set(a); B.cloth.prev.set(a); });
 requestAnimationFrame(frame);
 </script>
+
+</body>
+</html>
